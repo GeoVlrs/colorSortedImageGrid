@@ -6,7 +6,9 @@ import path from 'node:path';
 
 import { parseEnvFile, loadCredentials } from '../lib/spotify/env.js';
 import { createTokenProvider, AuthError } from '../lib/spotify/auth.js';
-import { createSpotifyClient, computeRetryDelay, HttpError } from '../lib/spotify/client.js';
+import {
+    createSpotifyClient, computeRetryDelay, HttpError, DEVELOPMENT_MODE_SEARCH_LIMIT
+} from '../lib/spotify/client.js';
 import { pickLargestImage, sniffImageExtension, downloadCoverArt } from '../lib/spotify/download.js';
 import { RunError } from '../lib/errors.js';
 
@@ -437,6 +439,59 @@ test('a second 401 aborts the whole run rather than firing doomed requests', asy
     assert.equal(client.aborted, true);
     // Every later album fails instantly instead of making a request.
     await assert.rejects(() => client.searchAlbums({ artist: 'C', album: 'D' }), AuthError);
+});
+
+test('regression: a limit Spotify rejects is retried once at the Development Mode ceiling', async () => {
+    // Confirmed against a live Development Mode app: limit=10 succeeds,
+    // limit=20 fails with exactly this 400 body. The fetcher should recover
+    // on its own rather than making every caller discover this by hand.
+    const limitsRequested = [];
+
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        fetch: async (url) => {
+            const limit = Number(new URL(url).searchParams.get('limit'));
+            limitsRequested.push(limit);
+            if (limit > DEVELOPMENT_MODE_SEARCH_LIMIT) {
+                return new Response(
+                    JSON.stringify({ error: { status: 400, message: 'Invalid limit' } }),
+                    { status: 400 }
+                );
+            }
+            return jsonResponse({ albums: { items: [{ name: 'Kid A' }] } });
+        }
+    });
+
+    const result = await client.searchAlbums(
+        { artist: 'Radiohead', album: 'Kid A' },
+        { limit: 20 }
+    );
+
+    assert.equal(result.items[0].name, 'Kid A');
+    assert.deepEqual(limitsRequested, [20, DEVELOPMENT_MODE_SEARCH_LIMIT]);
+});
+
+test('a limit already at or below the Development Mode ceiling is not retried', async () => {
+    let calls = 0;
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        fetch: async () => {
+            calls++;
+            return new Response(JSON.stringify({ error: { message: 'Invalid limit' } }), { status: 400 });
+        }
+    });
+
+    await assert.rejects(
+        () => client.searchAlbums({ artist: 'A', album: 'B' }, { limit: DEVELOPMENT_MODE_SEARCH_LIMIT }),
+        /Invalid limit/
+    );
+    // Two calls total: the filtered pass and the plain-text fallback, neither
+    // of which retries again since the limit was already at the ceiling.
+    assert.equal(calls, 2);
+});
+
+test('the default search limit is safe for a Development Mode app', () => {
+    assert.equal(DEVELOPMENT_MODE_SEARCH_LIMIT, 10);
 });
 
 test('search falls back to plain text when the field filter finds nothing', async () => {
