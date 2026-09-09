@@ -42,6 +42,85 @@ node index.js --interactive
 
 It prints the equivalent command line at the end, so it doubles as a way to learn the flags.
 
+## Fetching cover art from Spotify
+
+`colorgrid fetch` fills the `images/` folder for you, so the grid has something to sort.
+
+### Credentials
+
+Create an app at the [Spotify developer dashboard](https://developer.spotify.com/dashboard) and copy
+its Client ID and Secret. This uses the Client Credentials flow — app-only, so there is no user login
+and the redirect URI is never used.
+
+```bash
+cp .env.example .env
+# then fill in SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET
+```
+
+`.env` is gitignored. Real environment variables take precedence over the file, so a shell override
+or a CI secret works without editing anything. The secret is only ever sent in an `Authorization`
+header — it never appears in a URL, a log line, or the report.
+
+### Fetching
+
+```bash
+# One album
+node index.js fetch --artist "Radiohead" --album "Kid A"
+
+# A list: CSV, JSON, or lines of "Artist - Album"
+node index.js fetch --input albums.csv
+
+# One artist, album titles one per line
+node index.js fetch --artist "Tool" --input discography.txt
+
+# Check what a batch would match, without downloading anything
+node index.js fetch --input albums.csv --dryRun
+```
+
+Files are named `Artist - Album.jpg` by default; `--filenameTemplate '{album}'` matches the
+album-only convention instead. Tokens are `{artist}`, `{album}`, `{year}` and `{albumId}`.
+
+### Matching
+
+Ambiguity is resolved automatically so a batch never stops to ask, and everything that was not an
+exact match goes into a review report (`./output/spotify-fetch-report.json` by default, or Markdown
+if you give it a `.md` path).
+
+Each album is graded: `exact` (title and artist match), `exact-core` (right album, different pressing
+— a deluxe edition often carries different artwork), `fuzzy` (scored above `--minConfidence`, default
+0.72), or nothing downloaded at all. Matching normalises accents, ligatures and punctuation, compares
+with a bigram Dice coefficient so typos still match, and applies a hard artist gate so an
+identically-titled album by an unrelated artist can never win. Ties prefer a full album over a
+single, and an original release over a remaster.
+
+`--dryRun` runs the whole matching pass and writes the full report without downloading, which is the
+intended way to tune `--minConfidence` across a large list.
+
+### Not re-downloading what you already have
+
+Before spending an API call, each album is checked against the destination folder. The comparison is
+on the **album title**, not the filename, so it works whether a file on disk is named `Kid A.jpg` or
+`Radiohead - Kid A.jpg`. A confident match is skipped; a weaker one is downloaded but flagged in the
+report, since a redundant download is cheap while a wrong skip silently leaves a hole in the grid.
+
+This catches typos — `Nevermind` matches an existing `Neverming.png`. It cannot catch hand-shortened
+names like `AC Black Flag.jpg` for `Assassin's Creed IV: Black Flag`; for those, pass
+`--aliases aliases.json` mapping album titles to filenames you already use.
+
+`--force` re-downloads regardless, and `--onDuplicate skip|ignore` changes the policy.
+
+### Rate limits
+
+Requests run four at a time by default. A `429` pauses **every** worker for exactly as long as
+Spotify's `Retry-After` header asks, rather than each worker sleeping its own timer and so never
+actually honouring the limit. Retries are capped at three attempts with exponential backoff, and a
+`Retry-After` longer than `--maxRetryDelay` gives up and reports that album rather than parking the
+run for minutes. Access tokens refresh before they expire, so a long batch does not die at the
+one-hour mark.
+
+A single album that fails — not found, no artwork, network error — is reported and skipped; the batch
+continues.
+
 ## Sorting
 
 `--sortMethod` picks the strategy; `--sortParameter` picks the key(s) the numeric and banded
