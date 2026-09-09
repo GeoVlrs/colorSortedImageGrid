@@ -275,6 +275,8 @@ test('regression: a 429 pauses every worker, not just the one that hit it', asyn
 });
 
 test('a 500 is retried up to the attempt cap, then reported', async () => {
+    // Exercised via request() directly: searchAlbums makes a second (plain
+    // text) request on any failure, which would double-count attempts here.
     const slept = [];
     let calls = 0;
 
@@ -285,7 +287,7 @@ test('a 500 is retried up to the attempt cap, then reported', async () => {
     });
 
     await assert.rejects(
-        () => client.searchAlbums({ artist: 'A', album: 'B' }),
+        () => client.request('/search', { searchParams: { q: 'x' } }),
         (error) => {
             assert.ok(error instanceof HttpError);
             assert.equal(error.attempts, 3, 'one initial attempt plus two retries');
@@ -306,9 +308,101 @@ test('a 404 fails immediately with no sleeping at all', async () => {
         fetch: async () => { calls++; return new Response('{}', { status: 404 }); }
     });
 
-    await assert.rejects(() => client.searchAlbums({ artist: 'A', album: 'B' }), HttpError);
+    await assert.rejects(() => client.request('/search', { searchParams: { q: 'x' } }), HttpError);
     assert.equal(calls, 1);
     assert.deepEqual(slept, []);
+});
+
+test('regression: an HTTP error carries Spotify\'s own error message', async () => {
+    // "Spotify returned HTTP 400" alone is undiagnosable; the body normally
+    // names the exact malformed parameter, so it must survive into the error.
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        sleep: async () => {},
+        fetch: async () => new Response(
+            JSON.stringify({ error: { status: 400, message: 'invalid filter value' } }),
+            { status: 400 }
+        )
+    });
+
+    await assert.rejects(
+        () => client.request('/search', { searchParams: { q: 'x' } }),
+        (error) => {
+            assert.match(error.message, /invalid filter value/);
+            assert.equal(error.apiMessage, 'invalid filter value');
+            return true;
+        }
+    );
+});
+
+test('a non-JSON error body does not itself throw, and is still surfaced', async () => {
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        sleep: async () => {},
+        fetch: async () => new Response('<html>Bad Gateway</html>', { status: 400 })
+    });
+
+    await assert.rejects(
+        () => client.request('/search', { searchParams: { q: 'x' } }),
+        /Bad Gateway/
+    );
+});
+
+test('regression: a failure in the filtered search pass still tries plain text', async () => {
+    // A malformed field-filter query (an unusual title, a stray colon) should
+    // not cost the whole album when the plain-text pass could have found it.
+    const queries = [];
+
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        sleep: async () => {},
+        fetch: async (url) => {
+            const q = new URL(url).searchParams.get('q');
+            queries.push(q);
+            if (q.includes('album:')) return new Response('{}', { status: 400 });
+            return jsonResponse({ albums: { items: [{ name: 'Found via fallback' }] } });
+        }
+    });
+
+    const result = await client.searchAlbums({ artist: 'A', album: 'B' });
+    assert.equal(result.queryUsed, 'plaintext');
+    assert.equal(result.items[0].name, 'Found via fallback');
+    assert.equal(queries.length, 2);
+});
+
+test('regression: a fatal auth failure skips the plain-text fallback', async () => {
+    // Once the client is aborted, every further request is doomed - there is
+    // no point trying a second query before giving up.
+    let calls = 0;
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        sleep: async () => {},
+        fetch: async () => { calls++; return new Response('{}', { status: 401 }); }
+    });
+
+    await assert.rejects(() => client.searchAlbums({ artist: 'A', album: 'B' }), AuthError);
+    // Two 401s (initial + one replay) for the filtered pass, and no more.
+    assert.equal(calls, 2);
+});
+
+test('when both search passes fail, the more informative error wins', async () => {
+    let calls = 0;
+    const client = createSpotifyClient({
+        tokenProvider: stubTokenProvider(),
+        sleep: async () => {},
+        fetch: async () => {
+            calls++;
+            // Filtered pass gives a reason; plain-text pass gives none.
+            return calls === 1
+                ? new Response(JSON.stringify({ error: { message: 'bad field filter' } }), { status: 400 })
+                : new Response('{}', { status: 400 });
+        }
+    });
+
+    await assert.rejects(
+        () => client.searchAlbums({ artist: 'A', album: 'B' }),
+        /bad field filter/
+    );
 });
 
 test('a 401 refreshes the token and replays once', async () => {
