@@ -9,11 +9,13 @@
 // strategies, an analysis cache, animation, watch and interactive modes, plus
 // a Spotify cover-art fetcher. Run `node index.js --help` for the full surface.
 
+// Only light modules are imported up front. Every runner is loaded on demand
+// below, because a statically imported one would be loaded even for `--help`
+// or a rejected flag - and the render pipeline alone (Jimp, culori, quantize,
+// exifr) costs most of a second before a line of text is printed.
 import { buildParser, resolveOptions, resolveFetchOptions, isFetchCommand } from './lib/cli.js';
 import { createLogger } from './lib/log.js';
-import { runOnce, RunError } from './lib/run.js';
-import { runAnimation } from './lib/animate.js';
-import { runWatch } from './lib/watch.js';
+import { RunError } from './lib/errors.js';
 import { InputDirectoryError } from './lib/files.js';
 import { AuthError } from './lib/spotify/auth.js';
 
@@ -21,8 +23,6 @@ async function main() {
     const args = buildParser().parseSync();
     const logger = createLogger({ quiet: args.quiet, verbose: args.verbose });
 
-    // Lazily imported so the grid path never pays to load the fetcher - the
-    // same pattern the interactive mode already uses.
     if (isFetchCommand(args)) {
         const { runFetch } = await import('./lib/spotify/fetch.js');
         return runFetch(resolveFetchOptions(args), logger);
@@ -35,8 +35,16 @@ async function main() {
         options = await runInteractive(options);
     }
 
-    if (options.animate) return runAnimation(options, logger);
-    if (options.watch) return runWatch(options, logger);
+    if (options.animate) {
+        const { runAnimation } = await import('./lib/animate/index.js');
+        return runAnimation(options, logger);
+    }
+    if (options.watch) {
+        const { runWatch } = await import('./lib/watch.js');
+        return runWatch(options, logger);
+    }
+
+    const { runOnce } = await import('./lib/run.js');
     return runOnce(options, logger);
 }
 

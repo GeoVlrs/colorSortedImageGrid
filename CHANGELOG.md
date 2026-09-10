@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Two new animation modes, selected with `--animateMode`. `build` reveals the grid one tile at a
+  time; `morph` tweens tiles from filename order into sorted order. Both are GIF, with no new
+  dependencies. `--animate` on its own still means the original sweep.
+- `--animateFps`, `--animateHoldMs`, `--animateEasing`, `--revealPerFrame`, `--morphSeconds`,
+  `--morphStagger` and `--morphHoldMs`.
+
+### Changed
+
+- `lib/animate.js` became `lib/animate/`, with each mode behind a shared frame interface: modes are
+  async generators yielding raw RGBA plus an optional dirty rect, and one sink turns them into GIF
+  bytes. Build exploits that dirty rect to encode only the tile that changed, which is why a
+  145-frame animation is ~440KB rather than tens of megabytes.
+- `--help` and flag-validation errors went from ~620ms to ~250ms. The CLI was loading Jimp, culori,
+  quantize and exifr before printing anything, because option values lived in the same modules as
+  the behaviour and `index.js` statically imported every runner. Option values now live in
+  `lib/constants.js` and `lib/animate/constants.js`, and the runners load on demand.
+
+### Fixed
+
+- Sweep pinned every frame's dimensions to the first frame's, so a later frame of a different size
+  would have been encoded with a mismatched data length. It now fails with a message naming the
+  frame instead.
+- Sweep computed its grid from the base options rather than the current frame's, so a
+  visualisation-mode sweep could lay out a frame using the wrong column count.
+- `lib/animate.js` imported `RunError` from `run.js`, pulling in the whole render pipeline to get
+  one error class.
+
 ## v2.0.0
 
 Rewrite of the original single-file script into `lib/` modules (ESM, Node >=18), plus a new

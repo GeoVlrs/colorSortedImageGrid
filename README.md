@@ -55,13 +55,37 @@ node index.js --exportPalette ./output/palette.css
 node index.js --padding 12 --borderWidth 3 --background white
 ```
 
-## Animation, watch, dry runs, config
+## Animation
+
+Three GIF modes, chosen with `--animateMode`:
+
+| Mode | What it does | Typical output |
+| --- | --- | --- |
+| `build` | Reveals the grid one tile at a time, then holds on the finished result | ~145 frames, a few hundred KB |
+| `morph` | Tiles fly from filename order into colour order | ~76 frames, a few MB |
+| `sweep` (default) | Hard-cuts between values of one setting | one frame per value |
 
 ```bash
-node index.js --animate --animateOver sortMethod   # one GIF sweeping through each sort method
+node index.js --animateMode build                  # the grid assembling itself
+node index.js --animateMode morph                  # chaos resolving into a gradient
+node index.js --animate --animateOver sortMethod   # sweep through each sort method
+```
+
+`--animateFps` (default 25) sets the frame rate, and `--animateHoldMs` how long the finished result
+lingers. Morph takes `--morphSeconds` and `--morphStagger` (0 moves every tile at once; the default
+0.3 sends them off in a wave). Build takes `--revealPerFrame`, which otherwise auto-scales so a
+large collection stays under 240 frames.
+
+Note that GIF stores frame delays in 10ms steps, so 24fps is not representable — ask for it and you
+get 25fps, with a line saying so. `build` stays small because each frame encodes only the one tile
+that changed; `morph` repaints everything every frame, so keep `--animateWidth` modest for it.
+
+## Watch, dry runs, config
+
+```bash
 node index.js --watch                              # re-render whenever the input folder changes
 node index.js --dryRun                             # show the plan, write nothing
-node index.js --config ./preset.json                # load flags from a JSON file
+node index.js --config ./preset.json               # load flags from a JSON file
 ```
 
 ## Performance and terminal output
