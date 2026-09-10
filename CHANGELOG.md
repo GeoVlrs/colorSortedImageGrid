@@ -33,12 +33,19 @@
 
 ### Fixed
 
-- The "Configure anything else?" step was a checkbox multiselect: press Space to check an option,
-  Enter to submit whatever is checked. Arrowing to an option and pressing Enter did not check it,
-  and since the list was optional, that produced an empty selection with no error - which looked
-  identical regardless of which option was highlighted. It's now a plain yes/no per section, needing
-  nothing but Enter, matching every other prompt in the wizard. Declining the first "anything else?"
-  gate still skips the rest in one Enter, same as before.
+- The "Configure anything else?" step could silently do nothing. It is a checkbox list: Space checks
+  a box, Enter submits whatever is checked - so arrowing onto an option and pressing Enter submits
+  an empty selection, which an optional list accepted without complaint. That is indistinguishable
+  from "picking anything here skips straight to the end". The list stays (it works, and seven areas
+  on one screen beats seven questions - the prompt now advertises Space and the `a` toggle-all
+  shortcut), but an empty result is no longer the end of it: the wizard says so and falls back to
+  plain yes/no questions, each area configured immediately after its own yes. Nothing but Enter is
+  needed on that path, so a terminal that never delivers Space is still usable.
+- Sections chosen from that list are now run in list order rather than the order the boxes were
+  checked. Checking "Run mode" before "Animation" ran the run-mode questions first, offering
+  `--watch` before `animate` was set - a pair the parser rejects.
+- `--animateEasing` and `--animateOver` listed bare value names. Every option list in the wizard now
+  carries a description, enforced by a test so a new easing or sort key cannot ship undescribed.
 - Sort-key prompts (the band/sort key, tiebreaks, `--sortSecondary`) listed bare key names with no
   indication of what they mean - `value` vs `lightness` (HSV vs HSL brightness), which Lab axis is
   which. Each now carries a hint, and `dateTaken` displays as "date taken" rather than the flag's

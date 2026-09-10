@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildParser, resolveOptions } from '../lib/cli.js';
+import { SORT_KEYS } from '../lib/constants.js';
+import { ANIMATE_DIMENSIONS } from '../lib/animate/constants.js';
+import { EASING_NAMES } from '../lib/animate/easing.js';
 import { toFlagArgs, toCommandLine, toConfigObject, MAPPED_OPTIONS } from '../lib/interactive/summary.js';
-import { PROMPTS } from '../lib/interactive/index.js';
-import { SECTIONS, SPINE, promptsFor, allSectionOptions } from '../lib/interactive/sections.js';
+import { PROMPTS, SORT_KEY_INFO, EASING_INFO, ANIMATE_OVER_INFO } from '../lib/interactive/index.js';
+import { SECTIONS, SPINE, promptsFor, allSectionOptions, orderSections } from '../lib/interactive/sections.js';
 
 /** The options the pipeline gets when nothing at all is passed. */
 function defaultOptions() {
@@ -256,16 +259,46 @@ test('no question is asked about an option that is not a flag', () => {
     assert.deepEqual(strays, []);
 });
 
-test('every select offers only values the parser accepts', () => {
+test('every select offers parser-valid values, each with a description', () => {
     for (const [option, spec] of Object.entries(PROMPTS)) {
         if (spec.type !== 'select') continue;
 
-        for (const { value } of spec.options()) {
+        for (const { value, hint } of spec.options()) {
             const flag = option === 'sortKeys' ? 'sortParameter' : option;
             assert.doesNotThrow(
                 () => buildParser([`--${flag}`, String(value)], { exitOnError: false }).parseSync(),
                 `${option} offers "${value}", which the parser rejects`
             );
+            assert.ok(hint, `${option} offers "${value}" with no description`);
         }
     }
+});
+
+test('chosen sections are ordered by the list, not by when they were checked', () => {
+    // A checkbox list hands back press order. Animation must run before run
+    // mode, or the run section offers --watch before `animate` is set and the
+    // parser rejects the pair.
+    assert.deepEqual(orderSections(['run', 'animation']), ['animation', 'run']);
+    assert.deepEqual(orderSections(['performance', 'output']), ['output', 'performance']);
+    assert.deepEqual(orderSections([]), []);
+    assert.deepEqual(orderSections(['nope', 'grid']), ['grid']);
+});
+
+test('every value in a described set has a description', () => {
+    // The tables are the only reason these lists are readable, and a new easing
+    // or sort key would otherwise ship as a bare identifier. Fail here instead.
+    const missing = [];
+    for (const [name, values, info] of [
+        ['SORT_KEY_INFO', SORT_KEYS, SORT_KEY_INFO],
+        ['EASING_INFO', EASING_NAMES, EASING_INFO],
+        ['ANIMATE_OVER_INFO', Object.values(ANIMATE_DIMENSIONS), ANIMATE_OVER_INFO]
+    ]) {
+        for (const value of values) {
+            if (!info[value]?.hint) missing.push(`${name}.${value}`);
+        }
+        for (const key of Object.keys(info)) {
+            if (!values.includes(key)) missing.push(`${name}.${key} describes nothing`);
+        }
+    }
+    assert.deepEqual(missing, []);
 });
