@@ -33,6 +33,17 @@
 
 ### Fixed
 
+- The "Configure anything else?" step was a checkbox multiselect: press Space to check an option,
+  Enter to submit whatever is checked. Arrowing to an option and pressing Enter did not check it,
+  and since the list was optional, that produced an empty selection with no error - which looked
+  identical regardless of which option was highlighted. It's now a plain yes/no per section, needing
+  nothing but Enter, matching every other prompt in the wizard. Declining the first "anything else?"
+  gate still skips the rest in one Enter, same as before.
+- Sort-key prompts (the band/sort key, tiebreaks, `--sortSecondary`) listed bare key names with no
+  indication of what they mean - `value` vs `lightness` (HSV vs HSL brightness), which Lab axis is
+  which. Each now carries a hint, and `dateTaken` displays as "date taken" rather than the flag's
+  camelCase spelling.
+- "How many bands?" gave no indication of a reasonable range; it now suggests 8-16, default 12.
 - Interactive mode printed a command that did not reproduce the run. `--dryRun` was set but never
   emitted, so copying the printed command would have rendered for real. The flag reconstruction is
   now table-driven and covered by a round-trip test through the parser, which fails if any option
