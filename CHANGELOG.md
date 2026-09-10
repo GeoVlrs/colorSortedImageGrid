@@ -33,17 +33,17 @@
 
 ### Fixed
 
-- The "Configure anything else?" step could silently do nothing. It is a checkbox list: Space checks
-  a box, Enter submits whatever is checked - so arrowing onto an option and pressing Enter submits
-  an empty selection, which an optional list accepted without complaint. That is indistinguishable
-  from "picking anything here skips straight to the end". The list stays (it works, and seven areas
-  on one screen beats seven questions - the prompt now advertises Space and the `a` toggle-all
-  shortcut), but an empty result is no longer the end of it: the wizard says so and falls back to
-  plain yes/no questions, each area configured immediately after its own yes. Nothing but Enter is
-  needed on that path, so a terminal that never delivers Space is still usable.
-- Sections chosen from that list are now run in list order rather than the order the boxes were
-  checked. Checking "Run mode" before "Animation" ran the run-mode questions first, offering
-  `--watch` before `animate` was set - a pair the parser rejects.
+- The "Configure anything else?" step could silently do nothing. It was a checkbox list, where Space
+  checks a box and Enter submits whatever is checked - so arrowing onto an option and pressing Enter
+  submitted an empty selection, indistinguishable from "picking anything here skips to the end".
+  The library handles Space correctly (verified by driving it with synthetic keystrokes), but it
+  could not be made to work in the reporting terminal, which also turned out to be a legacy Windows
+  console with no Unicode support. It is now a plain menu that re-shows itself after each pick:
+  Enter marks or unmarks a row, and picking Done finishes. Same see-everything-at-once display, but
+  it needs only the arrow keys and Enter, which that console demonstrably delivers.
+- Sections are run in list order rather than the order they were marked. Marking "Run mode" before
+  "Animation" ran the run-mode questions first, offering `--watch` before `animate` was set - a pair
+  the parser rejects.
 - `--animateEasing` and `--animateOver` listed bare value names. Every option list in the wizard now
   carries a description, enforced by a test so a new easing or sort key cannot ship undescribed.
 - Sort-key prompts (the band/sort key, tiebreaks, `--sortSecondary`) listed bare key names with no
