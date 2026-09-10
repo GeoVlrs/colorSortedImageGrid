@@ -1,272 +1,103 @@
 # colorSortedImageGrid
 
-Given a folder of images, sorts them by colour and composites them into a single NxM grid image.
+Sorts a folder of images by colour into one NxM grid image. Also fetches the cover art to fill
+that folder, from Spotify.
 
 ![Example Output Image](exampleOutput.gif)
 
-Originally by [Zach Fox](https://github.com/zfox23/colorSortedImageGrid). This version keeps the
-original's behaviour and flags, and adds several sorting strategies, an analysis cache, GIF output,
-watch and interactive modes, and a rebuilt terminal UI.
+Originally by [Zach Fox](https://github.com/zfox23/colorSortedImageGrid). See
+[CHANGELOG.md](CHANGELOG.md) for what changed in this version.
 
-## Requirements
+## Setup
 
-Node.js 18 or newer. (The original README asked for v12.18.x; nothing here needs a version that old,
-and 12.x has been end-of-life for years.)
-
-## Getting started
+Requires Node 18+.
 
 ```bash
 npm install
 node index.js --help
 ```
 
-Put `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tif`, `.tiff` or `.gif` files into `./images`, then:
-
-```bash
-node index.js
-```
-
-That sorts by hue into a square grid and writes a timestamped PNG into `./output/`.
-
-There are 16 solid-colour test swatches in `./images/test/` for experimenting:
-
-```bash
-node index.js -i ./images/test --sortMethod hilbert
-```
-
-Not sure what you want? Let it ask:
-
-```bash
-node index.js --interactive
-```
-
-It prints the equivalent command line at the end, so it doubles as a way to learn the flags.
-
-## Fetching cover art from Spotify
-
-`colorgrid fetch` fills the `images/` folder for you, so the grid has something to sort.
-
-### Credentials
-
-Create an app at the [Spotify developer dashboard](https://developer.spotify.com/dashboard) and copy
-its Client ID and Secret. This uses the Client Credentials flow — app-only, so there is no user login
-and the redirect URI is never used.
-
-```bash
-cp .env.example .env
-# then fill in SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET
-```
-
-`.env` is gitignored. Real environment variables take precedence over the file, so a shell override
-or a CI secret works without editing anything. The secret is only ever sent in an `Authorization`
-header — it never appears in a URL, a log line, or the report.
-
-### Fetching
-
-```bash
-# One album
-node index.js fetch --artist "Radiohead" --album "Kid A"
-
-# A list: CSV, JSON, or lines of "Artist - Album"
-node index.js fetch --input albums.csv
-
-# One artist, album titles one per line
-node index.js fetch --artist "Tool" --input discography.txt
-
-# Check what a batch would match, without downloading anything
-node index.js fetch --input albums.csv --dryRun
-```
-
-Files are named `Artist - Album.jpg` by default; `--filenameTemplate '{album}'` matches the
-album-only convention instead. Tokens are `{artist}`, `{album}`, `{year}` and `{albumId}`.
-
-### Matching
-
-Ambiguity is resolved automatically so a batch never stops to ask, and everything that was not an
-exact match goes into a review report (`./output/spotify-fetch-report.json` by default, or Markdown
-if you give it a `.md` path).
-
-Each album is graded: `exact` (title and artist match), `exact-core` (right album, different pressing
-— a deluxe edition often carries different artwork), `fuzzy` (scored above `--minConfidence`, default
-0.72), or nothing downloaded at all. Matching normalises accents, ligatures and punctuation, compares
-with a bigram Dice coefficient so typos still match, and applies a hard artist gate so an
-identically-titled album by an unrelated artist can never win. Ties prefer a full album over a
-single, and an original release over a remaster.
-
-`--dryRun` runs the whole matching pass and writes the full report without downloading, which is the
-intended way to tune `--minConfidence` across a large list.
-
-### Not re-downloading what you already have
-
-Before spending an API call, each album is checked against the destination folder. The comparison is
-on the **album title**, not the filename, so it works whether a file on disk is named `Kid A.jpg` or
-`Radiohead - Kid A.jpg`. A confident match is skipped; a weaker one is downloaded but flagged in the
-report, since a redundant download is cheap while a wrong skip silently leaves a hole in the grid.
-
-This catches typos — `Nevermind` matches an existing `Neverming.png`. It cannot catch hand-shortened
-names like `AC Black Flag.jpg` for `Assassin's Creed IV: Black Flag`; for those, pass
-`--aliases aliases.json` mapping album titles to filenames you already use.
-
-`--force` re-downloads regardless, and `--onDuplicate skip|ignore` changes the policy.
-
-### Rate limits
-
-Requests run four at a time by default. A `429` pauses **every** worker for exactly as long as
-Spotify's `Retry-After` header asks, rather than each worker sleeping its own timer and so never
-actually honouring the limit. Retries are capped at three attempts with exponential backoff, and a
-`Retry-After` longer than `--maxRetryDelay` gives up and reports that album rather than parking the
-run for minutes. Access tokens refresh before they expire, so a long batch does not die at the
-one-hour mark.
-
-A single album that fails — not found, no artwork, network error — is reported and skipped; the batch
-continues.
-
 ## Sorting
 
-`--sortMethod` picks the strategy; `--sortParameter` picks the key(s) the numeric and banded
-strategies use.
+```bash
+node index.js                             # sort ./images by hue into a square grid
+node index.js -i ./images/test --sortMethod hilbert
+node index.js --interactive               # pick options through prompts
+```
 
-| Method | What it does | When to use it |
+| `--sortMethod` | What it does | Best for |
 | --- | --- | --- |
-| `numeric` (default) | Plain sort on one or more keys | Predictable, and the only one that honours multi-key ordering |
-| `banded` | Quantises the key into bands, sorts by a secondary key inside each | Fixes the streakiness of a plain hue sort |
-| `hilbert` | Orders along a 3D Hilbert curve through CIE Lab | Usually the best-looking overall gradient |
-| `perceptual` | Greedy nearest-neighbour walk using CIEDE2000 | Smoothest transitions between neighbours |
+| `numeric` (default) | plain sort on one or more `--sortParameter` keys | predictable, supports tiebreak keys |
+| `banded` | quantise into bands, sort by a secondary key within each | fixing streaky hue sorts |
+| `hilbert` | 3D Hilbert curve through Lab | the smoothest overall gradient |
+| `perceptual` | greedy nearest-neighbour walk, CIEDE2000 | the smoothest neighbour-to-neighbour transitions |
 
 Sort keys: `hue`, `saturation`, `value`, `lightness`, `luma`, `labL`, `labA`, `labB`, `dateTaken`,
 `filename`.
 
 ```bash
-# Multiple keys: hue first, brightness breaks the ties
-node index.js -p hue,luma
-
-# Reverse anything
-node index.js --sortMethod hilbert -d
-
-# Twelve hue bands, brightness within each, flowing continuously across bands
-node index.js --sortMethod banded --sortBands 12 --sortSecondary luma --serpentine
-
-# Sort by capture date instead of colour (EXIF, falling back to file mtime)
-node index.js -p dateTaken
+node index.js -p hue,luma                                     # tiebreak on luma
+node index.js --sortMethod hilbert -d                         # reverse
+node index.js --sortMethod banded --sortBands 12 --serpentine # banded, flowing across bands
 ```
 
-`--sortOrder row-major|column-major` controls how the sorted sequence is laid into the grid. It is
-independent of the sort itself.
+`--sortOrder row-major|column-major` sets the grid fill direction; it's independent of the sort.
 
-## Colour analysis
+## Colour and output
 
-`--colorMethod average` (default) collapses each image to one blended colour — fast, but a
-half-red/half-blue image averages to a purple that appears nowhere in it. `--colorMethod dominant`
-runs median-cut quantisation and picks the colour covering the most area.
+`--colorMethod average|dominant` picks how each image's colour is measured.
+`--visualizationMode normal|4x4|dominant` picks what each cell shows.
 
 ```bash
-node index.js --colorMethod dominant -v dominant
-```
-
-`--visualizationMode` controls what each cell shows: `normal` (the photo, cropped square), `4x4`
-(blocky mosaic), or `dominant` (a flat swatch of the extracted colour).
-
-## Output
-
-```bash
-# Explicit path
 node index.js -o ./output/grid.png
-
-# Each sorted image as its own numbered file in ./output/
-node index.js -o files
-
-# Also export the palette (.json or .css)
+node index.js -o files                            # numbered files instead of a grid
 node index.js --exportPalette ./output/palette.css
-
-# Framed and spaced out
-node index.js --padding 12 --borderWidth 3 --borderColor "#222" --background white
+node index.js --padding 12 --borderWidth 3 --background white
 ```
 
-`--padding`, `--borderWidth`, `--borderColor` and `--background` accept any CSS colour, including
-`transparent`.
-
-## Animation
-
-Sweep one setting across frames and get a single animated GIF — the thing the example GIF above was
-originally assembled by hand from three separate runs:
+## Animation, watch, dry runs, config
 
 ```bash
-node index.js --animate --animateOver sortMethod
-node index.js --animate --animateOver sortParameter --animateValues hue,luma,saturation --animateDelay 800
+node index.js --animate --animateOver sortMethod   # one GIF sweeping through each sort method
+node index.js --watch                              # re-render whenever the input folder changes
+node index.js --dryRun                             # show the plan, write nothing
+node index.js --config ./preset.json                # load flags from a JSON file
 ```
 
-`--animateOver` accepts `sortParameter`, `sortMethod` or `visualizationMode`. `--animateWidth`
-(default 900) keeps the file size sane.
+## Performance and terminal output
 
-## Other modes
+Colour analysis is cached between runs (`--no-cache` to disable). `--concurrency` controls
+parallelism. `--verbose`/`--quiet` control how much gets printed.
+
+## Fetching cover art from Spotify
 
 ```bash
-node index.js --dryRun     # report the plan, including images that will not fit; write nothing
-node index.js --watch      # re-render whenever the input folder changes
-node index.js --recursive  # include subfolders
+cp .env.example .env    # fill in SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET
+node index.js fetch --artist "Radiohead" --album "Kid A"
+node index.js fetch --input albums.csv --dryRun     # check matches before downloading
 ```
 
-Under `--watch`, write your output somewhere outside the folder being watched.
+Get credentials from the [Spotify dashboard](https://developer.spotify.com/dashboard) (Client
+Credentials flow — no user login). `.env` is gitignored.
 
-## Configuration and presets
+Ambiguity is resolved automatically so a batch never stops to ask; anything short of an exact
+match is written to a review report (`./output/spotify-fetch-report.json`, or Markdown for a
+`.md` path). `--minConfidence` (default 0.72) sets the bar — see `lib/spotify/match.js` for how
+matches are scored.
 
-Any flags can live in a JSON file; flags on the command line still win.
+Filenames default to `Artist - Album.jpg` (`--filenameTemplate '{album}'` for album-only). Before
+downloading, each album is checked against what's already in the destination folder — `--force`
+to re-download, `--onDuplicate skip|ignore` to change the policy, `--aliases file.json` to map
+hand-abbreviated existing filenames. See `lib/spotify/naming.js` for how that comparison works.
 
-```bash
-node index.js --config ./my-preset.json
-```
-
-```json
-{
-  "sortMethod": "hilbert",
-  "visualizationMode": "dominant",
-  "pxPerImage": 128,
-  "padding": 8,
-  "background": "#111111"
-}
-```
-
-## Performance
-
-Colour analysis is cached per file (keyed on path, size and mtime), so re-running over the same
-folder with different sort settings skips the re-analysis. Disable with `--no-cache`; relocate with
-`--cacheFile`.
-
-`--concurrency` (defaults to your CPU count, capped at 8) controls how many images are processed in
-parallel. Setting `--pxPerImage` explicitly also lowers peak memory, because tiles can be rendered
-without waiting to measure every input first.
-
-## Terminal output
-
-`--verbose` adds per-image detail and the full analysis table; `--quiet` leaves only errors and the
-output path. After sorting, the colour sequence is printed as a strip of true-colour blocks so you
-can judge the gradient without opening the file (`--no-preview` to disable; it is skipped
-automatically when output is piped).
+Requests run concurrently with automatic rate-limit handling and token refresh (details in
+`lib/spotify/client.js`); a failed album is reported and skipped without stopping the batch.
 
 ## Tests
 
 ```bash
 npm test
 ```
-
-## Notes on behaviour that changed
-
-Three bugs in the original are fixed here, and two of them change output you may have relied on:
-
-- **Colour extraction.** The original read the average pixel by slicing a hex string, which
-  misaligned whenever the red channel was below 16 — a pure blue image was analysed as
-  `(80, 15, 255)` instead of `(5, 0, 255)`. Dark and blue-heavy images therefore sorted to the wrong
-  place.
-- **`--sortOrder row-major`.** The compositing loop always filled column-by-column and only swapped
-  its bounds, so on a square grid `row-major` and `column-major` produced identical output, and on a
-  non-square grid `row-major` misplaced images.
-- **`.jpeg` files.** The old extension filter was a substring test for `.jpg`, which does not match
-  `.jpeg`, so those files were silently ignored. Uppercase extensions were dropped too.
-
-Also: `--sortParameter value` now means HSV value. The original called its conversion HSV but
-computed HSL, so `value` was really lightness — still available as the separate `lightness` key.
-
-The original single-file implementation is preserved as `index.original.js.bak`.
 
 ## Licence
 
