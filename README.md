@@ -8,6 +8,8 @@ that folder, from Spotify.
 Originally by [Zach Fox](https://github.com/zfox23/colorSortedImageGrid). See
 [CHANGELOG.md](CHANGELOG.md) for what changed in this version.
 
+![Morph 2026](output/Morph%202026.gif)
+
 ## Setup
 
 Requires Node 18+.

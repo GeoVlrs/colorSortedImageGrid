@@ -10,6 +10,9 @@ input/
 
 output/*
 !output/README.md
+# Featured in the README - kept as a tracked exception to the folder's
+# otherwise-generated, gitignored contents.
+!output/Morph 2026.gif
 
 # Credentials - must never be committed
 .env
