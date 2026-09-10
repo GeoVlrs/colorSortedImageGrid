@@ -31,7 +31,7 @@ async function main() {
     let options = resolveOptions(args);
 
     if (options.interactive) {
-        const { runInteractive } = await import('./lib/interactive.js');
+        const { runInteractive } = await import('./lib/interactive/index.js');
         options = await runInteractive(options);
     }
 

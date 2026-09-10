@@ -25,6 +25,11 @@ node index.js -i ./images/test --sortMethod hilbert
 node index.js --interactive               # pick options through prompts
 ```
 
+`--interactive` asks a handful of questions, then offers the rest by section — output, grid and
+canvas, sorting details, colour, animation, run mode, performance — so every flag below is
+reachable without memorising any of them. It prints the equivalent command at the end, and can save
+the answers as a `--config` preset.
+
 | `--sortMethod` | What it does | Best for |
 | --- | --- | --- |
 | `numeric` (default) | plain sort on one or more `--sortParameter` keys | predictable, supports tiebreak keys |
@@ -87,6 +92,9 @@ node index.js --watch                              # re-render whenever the inpu
 node index.js --dryRun                             # show the plan, write nothing
 node index.js --config ./preset.json               # load flags from a JSON file
 ```
+
+`--watch` and an animation are mutually exclusive. A preset is a JSON object keyed by flag name;
+`--interactive` will write one for you.
 
 ## Performance and terminal output
 
