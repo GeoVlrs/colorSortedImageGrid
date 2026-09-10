@@ -29,12 +29,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zfox23/colorSortedImageGrid.git"
+    "url": "git+https://github.com/GeoVlrs/colorSortedImageGrid.git"
   },
-  "author": "Zach Fox",
+  "author": "Zach Fox (original), GeoVlrs (this fork)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/zfox23/colorSortedImageGrid/issues"
+    "url": "https://github.com/GeoVlrs/colorSortedImageGrid/issues"
   },
-  "homepage": "https://github.com/zfox23/colorSortedImageGrid#readme"
+  "homepage": "https://github.com/GeoVlrs/colorSortedImageGrid#readme"
 }

@@ -133,4 +133,4 @@ npm test
 
 ## Licence
 
-MIT, as the original.
+MIT

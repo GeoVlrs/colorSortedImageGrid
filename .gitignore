@@ -4,6 +4,10 @@ images/*
 !images/README.md
 !images/test
 
+# Ad-hoc input folders (e.g. a --inputDirectory pointed outside ./images) -
+# real personal library content, never meant to be tracked.
+input/
+
 output/*
 !output/README.md
 
